@@ -1,98 +1,93 @@
 ---
-title: "Activity"
-author: "saumya"
-date: "21/06/2020"
-output: pdf_document
+title: "Reproducible Research: Peer Assessment 1"
+output: 
+  html_document: 
+    keep_md: true
+    author: "Saumya Bhardwaj"
 ---
 
-```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE)
+*Saumya Bhardwaj*
+
+## Loading and preprocessing the data
+Before load the data, we will load the ```dplyr``` and ```ggplot2```  libraries. 
+```{r message=FALSE}
+library(dplyr)
+library(ggplot2)
 ```
 
-## R Markdown
+Then, unzip and load the data. Then convert the ```date``` collumn into Date format. And then, group the dataframe by date, and summarize to get the total, mean, median, minimum and maximum steps per date.
 
-This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
-
-When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
-
+```{r}
+unzip("activity.zip",exdir="./data")
+data <- read.csv("./data/activity.csv")
+data$date <- as.Date(data$date)
+summary_data <- data %>% group_by(date) %>%
+  summarise(total=sum(steps,na.rm=T),mean=mean(steps,na.rm = T),
+            median=median(steps,na.rm = T),
+            maximum=max(steps),minimum=min(steps),.groups = 'drop')
 ```
-if (!file.exists("activity.csv") )
-{
-  dlurl <- 'http://d396qusza40orc.cloudfront.net/repdata%2Fdata%2Factivity.zip'  
-  download.file(dlurl,destfile='repdata%2Fdata%2Factivity.zip',mode='wb')  
-  unzip('repdata%2Fdata%2Factivity.zip')
-}
 
-# Read data
-data <- read.csv("activity.csv")  
-steps_by_day <- aggregate(steps ~ date, data, sum)
-hist(steps_by_day$steps, main = paste("Total Steps Each Day"), col="green",xlab="Number of Steps")
+Then we will look at the first five rows in this new dataset
+```{r}
+head(summary_data)
 ```
 ## What is mean total number of steps taken per day?
-```
-rmean <- mean(steps_by_day$steps)
-rmean
 
-rmedian <- median(steps_by_day$steps)
-rmedian
+The histogram of total steps per day is given by the next code
+```{r}
+with(summary_data,hist(total,breaks=10,main="Histogram of Total Steps per day",
+                       col="blue",border="orange"))
 ```
+
+The mean and median total can be easily calculated by
+```{r}
+mean_total <- mean(summary_data$total,na.rm=T)
+median_total <- median(summary_data$total,na.rm=T)
+mean_total
+median_total
+```
+
+So, the mean total is `r mean_total` and the median total is `r median_total`.  
 
 ## What is the average daily activity pattern?
 
-```
-steps_by_interval <- aggregate(steps ~ interval, data, mean)
-plot(steps_by_interval$interval,steps_by_interval$steps, type="l", xlab="Interval", ylab="Number of Steps",main="Average Number of Steps per Day by Interval")
+Now we are going to plot a time series of the average steps per interval. But first, we need to summarize our data grouped by interval. We will look to the first 5 lines of this new dataframe.
 
-max_interval <- steps_by_interval[which.max(steps_by_interval$steps),1]
-max_interval
+```{r}
+interval_data <- data %>% group_by(interval) %>%
+  summarise(total=sum(steps,na.rm=T),mean=mean(steps,na.rm = T),
+            median=median(steps,na.rm = T),.groups = 'drop')
+head(interval_data)            
+```
+To plot the time series needed, we are going to use the ```ggplot2``` library.
+
+```{r}
+qplot(interval,mean,data=interval_data,geom='line',
+       xlab="Interval",main="Time Series of average steps per interval",
+       ylab="Average",colour=I("red"))
 ```
 
-##.Imputing missing values
-```
-NATotal <- sum(!complete.cases(data))
-NATotal
+The interval that have on average the maximum number of steps can be found with the next line of code
 
-StepsAverage <- aggregate(steps ~ interval, data = data, FUN = mean)
-fillNA <- numeric()
-for (i in 1:nrow(data)) {
-  obs <- data[i, ]
-  if (is.na(obs$steps)) {
-    steps <- subset(StepsAverage, interval == obs$interval)$steps
-  } else {
-    steps <- obs$steps
-  }
-  fillNA <- c(fillNA, steps)
+```{r}
+interval_data[which.max(interval_data$total),][[1]]
+```
+
+
+## Imputing missing values
+
+To determine the amount of NA's in the dataset, we can use the ```table``` function
+
+```{r}
+table(is.na(data$steps))
+```
+
+So, the total number of missing values is `r table(is.na(data$steps))[[2]]`. That represents `r round(table(is.na(data$steps))[[2]]/dim(data)[[1]]*100,2)` percent of the whole dataset, so we will fill the missing the data using the mean of the interval. For that, we will use the values already calculated in ```interval_data```. So, we will begin creating ```data_filled``` using the main dataset. Then we will search for the indices of the rows that have na's, then save the interval where it happens, and retrieve the result from the ```interval_data``` dataset.
+
+```{r}
+data_filled <- data
+for (i in which(is.na(data_filled$steps))){
+  missedInterval <- data_filled[i,3]
+  data_filled[i,1] <- interval_data[[which(interval_data$interval==missedInterval),3]]
 }
-
-new_activity <- data
-new_activity$steps <- fillNA
-
-StepsTotalUnion <- aggregate(steps ~ date, data = new_activity, sum, na.rm = TRUE)
-hist(StepsTotalUnion$steps, main = paste("Total Steps Each Day"), col="blue", xlab="Number of Steps")
-#Create Histogram to show difference. 
-hist(steps_by_day$steps, main = paste("Total Steps Each Day"), col="green", xlab="Number of Steps", add=T)
-legend("topright", c("Imputed", "Non-imputed"), col=c("blue", "green"), lwd=10)
-
-rmeantotal <- mean(StepsTotalUnion$steps)
-rmeantotal
-
-rmediantotal <- median(StepsTotalUnion$steps)
-rmediantotal
-
-rmediandiff <- rmediantotal - rmedian
-rmediandiff
-
-rmeandiff <- rmeantotal - rmean
-rmeandiff
-```
-
-##Are there differences in activity patterns between weekdays and weekends?
-
-```
-weekdays <- c("Monday", "Tuesday", "Wednesday", "Thursday", 
-              "Friday")
-new_activity$dow = as.factor(ifelse(is.element(weekdays(as.Date(new_activity$date)),weekdays), "Weekday", "Weekend"))
-StepsTotalUnion <- aggregate(steps ~ interval + dow, new_activity, mean)
-library(lattice)
-xyplot(StepsTotalUnion$steps ~ StepsTotalUnion$interval|StepsTotalUnion$dow, main="Average Steps per Day by Interval",xlab="Interval", ylab="Steps",layout=c(1,2), type="l")
 ```
